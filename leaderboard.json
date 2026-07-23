@@ -1,0 +1,63 @@
+{
+  "Easy": [
+    {
+      "name": "Luzi",
+      "moves": 12,
+      "time_ms": 41769
+    },
+    {
+      "name": "Luzi",
+      "moves": 13,
+      "time_ms": 23467
+    },
+    {
+      "name": "henri",
+      "moves": 14,
+      "time_ms": 34034
+    },
+    {
+      "name": "Luzi",
+      "moves": 15,
+      "time_ms": 27817
+    },
+    {
+      "name": "henri",
+      "moves": 18,
+      "time_ms": 35387
+    },
+    {
+      "name": "henri",
+      "moves": 20,
+      "time_ms": 40068
+    }
+  ],
+  "Medium": [
+    {
+      "name": "Luzi",
+      "moves": 20,
+      "time_ms": 62970
+    },
+    {
+      "name": "henri",
+      "moves": 28,
+      "time_ms": 51002
+    },
+    {
+      "name": "henri",
+      "moves": 30,
+      "time_ms": 66552
+    },
+    {
+      "name": "henri",
+      "moves": 35,
+      "time_ms": 75870
+    }
+  ],
+  "Hard": [
+    {
+      "name": "henri",
+      "moves": 60,
+      "time_ms": 144591
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# pygame-ce provides the "pygame" module (you still write: import pygame).
+# Classic pygame has no prebuilt wheel for Python 3.14 yet, pygame-ce does.
+pygame-ce>=2.5.7
+
+# Only needed to build the browser version (py -m pygbag --build .),
+# not for running the game on the desktop. server.py needs no dependencies.
+pygbag>=0.9.2
