@@ -153,6 +153,12 @@ def patched_index():
 
     The viewport/style injection makes the page behave like an app on touch
     devices (no zooming, scrolling or text selection while playing).
+
+    ume_block=0 skips pygbag's "Ready to start ! Please click/touch page"
+    gate so the game starts by itself once loading finishes. Browsers may
+    still keep audio muted until the first tap; SDL resumes the audio
+    context automatically on that first interaction, and the game is
+    fully tap-driven anyway.
     """
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace(RUNTIME_CDN, "/cdn/")
@@ -160,6 +166,9 @@ def patched_index():
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
         MOBILE_VIEWPORT)
     html = html.replace("</head>", MOBILE_STYLE + "\n</head>", 1)
+    html, replaced = re.subn(r"ume_block\s*:\s*1", "ume_block : 0", html, count=1)
+    if not replaced and "ume_block" not in html:
+        html = html.replace("config = {", "config = {\n    ume_block : 0,", 1)
     return html.encode("utf-8")
 
 
