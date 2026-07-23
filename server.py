@@ -57,6 +57,20 @@ LEADERBOARD_PATH = DATA_DIR / "leaderboard.json"
 
 RUNTIME_CDN = "https://pygame-web.github.io/cdn/"
 
+# Injected into index.html so the game is playable on phones/tablets: a proper
+# viewport (no pinch/double-tap zoom fighting the canvas), no page scrolling
+# or pull-to-refresh, and no accidental text selection when tapping cards.
+# Done here (not by editing build/web/index.html) because "pygbag --build"
+# regenerates that file.
+MOBILE_VIEWPORT = ('<meta name="viewport" content="width=device-width, '
+                   'initial-scale=1.0, maximum-scale=1.0, user-scalable=no, '
+                   'viewport-fit=cover">')
+MOBILE_STYLE = """<style>
+html, body { margin: 0; overflow: hidden; overscroll-behavior: none; }
+body { position: fixed; inset: 0; }
+canvas.emscripten { touch-action: none; -webkit-user-select: none; user-select: none; }
+</style>"""
+
 # WebAssembly files must be served with this type or the browser refuses
 # to compile them (Windows registries often lack the mapping).
 mimetypes.add_type("application/wasm", ".wasm")
@@ -131,14 +145,22 @@ def ensure_runtime():
 
 
 def patched_index():
-    """index.html with CDN URLs rewritten to the local mirror.
+    """index.html with CDN URLs rewritten to the local mirror, plus mobile tweaks.
 
     The replacement must be an absolute path (leading slash): the pygbag
     loader passes it to dynamic import(), and import("cdn/...") without a
     slash would be an invalid bare module specifier.
+
+    The viewport/style injection makes the page behave like an app on touch
+    devices (no zooming, scrolling or text selection while playing).
     """
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-    return html.replace(RUNTIME_CDN, "/cdn/").encode("utf-8")
+    html = html.replace(RUNTIME_CDN, "/cdn/")
+    html = html.replace(
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+        MOBILE_VIEWPORT)
+    html = html.replace("</head>", MOBILE_STYLE + "\n</head>", 1)
+    return html.encode("utf-8")
 
 
 def patched_pythons_js():

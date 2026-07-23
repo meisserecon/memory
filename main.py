@@ -7,9 +7,10 @@ to a highscores.json file next to this script. When the game runs in
 a web browser (see server.py), the board is shared between all
 players via the server instead.
 
-Controls: pick a difficulty with the mouse or keys 1-3, H opens the
-high score board, left-click cards to flip them, R to restart,
-Esc for menu / quit.
+Controls: everything works by mouse click or touch tap (pick a
+difficulty, flip cards, use the on-screen Menu / Restart / Save
+buttons). A physical keyboard works too: keys 1-3 pick a difficulty,
+H opens the high score board, R restarts, Esc for menu / quit.
 """
 
 import asyncio
@@ -399,6 +400,15 @@ def format_time(ms):
     return f"{total_seconds // 60}:{total_seconds % 60:02d}"
 
 
+def draw_button(screen, rect, label, font, mouse_pos):
+    """One tappable button; brightens under the mouse (no hover on touch)."""
+    color = BUTTON_HOVER if rect.collidepoint(mouse_pos) else BUTTON
+    pygame.draw.rect(screen, color, rect, border_radius=10)
+    pygame.draw.rect(screen, CARD_BACK_BORDER, rect, width=3, border_radius=10)
+    text = font.render(label, True, TEXT_LIGHT)
+    screen.blit(text, text.get_rect(center=rect.center))
+
+
 def text_color_for(bg):
     """Pick dark or light text depending on how bright the background is."""
     r, g, b = bg
@@ -445,19 +455,42 @@ def draw_card(screen, card, number_font, back_font, now):
     screen.blit(scaled, scaled.get_rect(center=card.rect.center))
 
 
-def draw_hud(screen, game, hud_font, small_font):
+def hud_buttons():
+    """Small tappable Menu / Restart buttons in the top bar (R / Esc still work)."""
+    y = (HUD_HEIGHT - 38) // 2
+    menu = pygame.Rect(0, y, 100, 38)
+    restart = pygame.Rect(0, y, 110, 38)
+    total = menu.width + 12 + restart.width
+    menu.left = (WINDOW_WIDTH - total) // 2
+    restart.left = menu.right + 12
+    return [("menu", menu), ("restart", restart)]
+
+
+def draw_hud(screen, game, buttons, hud_font, button_font, mouse_pos):
     moves_text = hud_font.render(f"Moves: {game.moves}", True, TEXT_LIGHT)
     screen.blit(moves_text, (MARGIN, 18))
 
     time_text = hud_font.render(f"Time: {format_time(game.elapsed_ms())}", True, TEXT_LIGHT)
     screen.blit(time_text, time_text.get_rect(topright=(WINDOW_WIDTH - MARGIN, 18)))
 
-    label = game.difficulty[0]
-    hint = small_font.render(f"{label}  -  R = restart, Esc = menu", True, CARD_BACK_BORDER)
-    screen.blit(hint, hint.get_rect(midtop=(WINDOW_WIDTH // 2, 22)))
+    for action, rect in buttons:
+        draw_button(screen, rect, "Restart" if action == "restart" else "Menu",
+                    button_font, mouse_pos)
 
 
-def draw_win_banner(screen, game, banner_font, hud_font, small_font):
+def win_banner_buttons():
+    """Tappable Play Again / Menu buttons on the win banner."""
+    again = pygame.Rect(0, 0, 150, 50)
+    menu = pygame.Rect(0, 0, 110, 50)
+    total = again.width + 16 + menu.width
+    again.left = (WINDOW_WIDTH - total) // 2
+    again.top = WINDOW_HEIGHT // 2 + 45
+    menu.left = again.right + 16
+    menu.top = again.top
+    return [("again", again), ("menu", menu)]
+
+
+def draw_win_banner(screen, game, buttons, banner_font, hud_font, button_font, mouse_pos):
     overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
     overlay.fill(BANNER_BG)
     screen.blit(overlay, (0, 0))
@@ -473,8 +506,9 @@ def draw_win_banner(screen, game, banner_font, hud_font, small_font):
     )
     screen.blit(stats, stats.get_rect(center=(center_x, center_y + 10)))
 
-    hint = small_font.render("Press R to play again, Esc for menu", True, TEXT_LIGHT)
-    screen.blit(hint, hint.get_rect(center=(center_x, center_y + 55)))
+    for action, rect in buttons:
+        draw_button(screen, rect, "Play Again" if action == "again" else "Menu",
+                    button_font, mouse_pos)
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +556,7 @@ def draw_menu(screen, buttons, hs_button, mouse_pos, banner_font, small_font, hu
     text = hud_font.render("High Scores", True, TEXT_LIGHT)
     screen.blit(text, text.get_rect(center=hs_button.center))
 
-    hint = small_font.render("Click a button or press 1, 2, 3 - H for high scores",
+    hint = small_font.render("Tap or click a button to start - H for high scores",
                              True, CARD_BACK_BORDER)
     screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 680)))
 
@@ -531,7 +565,40 @@ def draw_menu(screen, buttons, hs_button, mouse_pos, banner_font, small_font, hu
 # High score screens (name entry + board)
 # ---------------------------------------------------------------------------
 
-def draw_name_entry(screen, game, name, now, banner_font, hud_font, small_font):
+def name_entry_box():
+    """The input box rect - also the tap target that opens the mobile keyboard."""
+    box = pygame.Rect(0, 0, 340, 56)
+    box.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+    return box
+
+
+def name_entry_buttons():
+    """Tappable Save / Skip buttons below the name input box."""
+    save = pygame.Rect(0, 0, 120, 46)
+    skip = pygame.Rect(0, 0, 120, 46)
+    total = save.width + 16 + skip.width
+    save.left = (WINDOW_WIDTH - total) // 2
+    save.top = WINDOW_HEIGHT // 2 + 110
+    skip.left = save.right + 16
+    skip.top = save.top
+    return [("save", save), ("skip", skip)]
+
+
+def prompt_for_name(current):
+    """Open the browser's text prompt so touch devices get an on-screen
+    keyboard. Returns the new name (or the unchanged one on cancel/error)."""
+    import platform
+    try:
+        entered = platform.window.prompt("Your name for the high score board:", current)
+    except Exception:
+        return current
+    if entered is None:
+        return current
+    return str(entered).strip()[:MAX_NAME_LENGTH]
+
+
+def draw_name_entry(screen, game, name, now, box, buttons,
+                    banner_font, hud_font, small_font, button_font, mouse_pos):
     """Overlay shown after a winning game that made it onto the board."""
     overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
     overlay.fill(BANNER_BG)
@@ -550,8 +617,6 @@ def draw_name_entry(screen, game, name, now, banner_font, hud_font, small_font):
     screen.blit(stats, stats.get_rect(center=(center_x, center_y - 70)))
 
     # Input box with a blinking cursor.
-    box = pygame.Rect(0, 0, 340, 56)
-    box.center = (center_x, center_y)
     pygame.draw.rect(screen, CARD_BACK, box, border_radius=10)
     pygame.draw.rect(screen, CARD_MATCHED_BORDER, box, width=3, border_radius=10)
     text = hud_font.render(name, True, TEXT_LIGHT)
@@ -562,9 +627,12 @@ def draw_name_entry(screen, game, name, now, banner_font, hud_font, small_font):
         pygame.draw.rect(screen, TEXT_LIGHT,
                          (cursor_x, text_rect.top + 4, 3, text_rect.height - 8))
 
-    hint = small_font.render("Type your name - Enter to save, Esc to skip",
+    hint = small_font.render("Type your name - on touch screens tap the box first",
                              True, TEXT_LIGHT)
-    screen.blit(hint, hint.get_rect(center=(center_x, center_y + 70)))
+    screen.blit(hint, hint.get_rect(center=(center_x, center_y + 48)))
+
+    for action, rect in buttons:
+        draw_button(screen, rect, action.capitalize(), button_font, mouse_pos)
 
 
 def highscore_tab_rects():
@@ -576,9 +644,17 @@ def highscore_tab_rects():
             for i in range(len(DIFFICULTIES))]
 
 
-def draw_highscores(screen, scores, tab, tab_rects, banner_font, hud_font, small_font):
+def highscores_back_button():
+    """Tappable way back to the menu (Esc still works)."""
+    return pygame.Rect(MARGIN, 58, 96, 44)
+
+
+def draw_highscores(screen, scores, tab, tab_rects, back_button,
+                    banner_font, hud_font, small_font, button_font, mouse_pos):
     title = banner_font.render("High Scores", True, TEXT_LIGHT)
     screen.blit(title, title.get_rect(center=(WINDOW_WIDTH // 2, 80)))
+
+    draw_button(screen, back_button, "Back", button_font, mouse_pos)
 
     # Tabs to switch between difficulties.
     for rect, i in tab_rects:
@@ -606,7 +682,7 @@ def draw_highscores(screen, scores, tab, tab_rects, banner_font, hud_font, small
             time_text = hud_font.render(format_time(entry["time_ms"]), True, TEXT_LIGHT)
             screen.blit(time_text, time_text.get_rect(topright=(WINDOW_WIDTH - 90, y)))
 
-    hint = small_font.render("1-3 or click to switch difficulty, Esc for menu",
+    hint = small_font.render("1-3 or tap to switch difficulty",
                              True, CARD_BACK_BORDER)
     screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 700)))
 
@@ -670,12 +746,18 @@ async def main():
     banner_font = pygame.font.SysFont("arial", 64, bold=True)
     hud_font = pygame.font.SysFont("arial", 28, bold=True)
     small_font = pygame.font.SysFont("arial", 24)
+    button_font = pygame.font.SysFont("arial", 20, bold=True)
     sounds = load_sounds()
 
     state = "menu"               # "menu", "playing", "enter_name" or "highscores"
     buttons = menu_buttons()
     hs_button = highscores_button()
     tab_rects = highscore_tab_rects()
+    hud_btns = hud_buttons()
+    win_btns = win_banner_buttons()
+    name_box = name_entry_box()
+    name_btns = name_entry_buttons()
+    back_btn = highscores_back_button()
     scores, online = await load_scores()
     game = None
     number_font = back_font = None
@@ -689,6 +771,17 @@ async def main():
         card_size = game.cards[0].rect.width
         number_font, back_font = card_fonts(card_size)
         state = "playing"
+
+    async def save_player_name():
+        """Save the entered name to the board, then show the board."""
+        nonlocal scores, online, highscore_tab, state
+        scores, online = await submit_score(
+            scores, online, game.difficulty[0],
+            player_name.strip() or "Player",
+            game.moves, game.final_time_ms)
+        labels = [label for label, _c, _r in DIFFICULTIES]
+        highscore_tab = labels.index(game.difficulty[0])
+        state = "highscores"
 
     running = True
     while running:
@@ -721,25 +814,36 @@ async def main():
                     if event.key == pygame.K_r:
                         game.reset()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    was_won = game.won
-                    game.handle_click(event.pos)
-                    # The click that wins the game may earn a high score entry.
-                    if (game.won and not was_won
-                            and qualifies_for_highscore(scores, game.difficulty[0],
-                                                        game.moves, game.final_time_ms)):
-                        player_name = ""
-                        state = "enter_name"
+                    if game.won:
+                        # Win banner buttons (R / Esc work too).
+                        for action, rect in win_btns:
+                            if rect.collidepoint(event.pos):
+                                if action == "again":
+                                    game.reset()
+                                else:
+                                    state = "menu"
+                    elif any(rect.collidepoint(event.pos) for _a, rect in hud_btns):
+                        # HUD buttons: leave the cards alone when a button is tapped.
+                        for action, rect in hud_btns:
+                            if rect.collidepoint(event.pos):
+                                if action == "restart":
+                                    game.reset()
+                                else:
+                                    state = "menu"
+                    else:
+                        was_won = game.won
+                        game.handle_click(event.pos)
+                        # The click that wins the game may earn a high score entry.
+                        if (game.won and not was_won
+                                and qualifies_for_highscore(scores, game.difficulty[0],
+                                                            game.moves, game.final_time_ms)):
+                            player_name = ""
+                            state = "enter_name"
 
             elif state == "enter_name":
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                        scores, online = await submit_score(
-                            scores, online, game.difficulty[0],
-                            player_name.strip() or "Player",
-                            game.moves, game.final_time_ms)
-                        labels = [label for label, _c, _r in DIFFICULTIES]
-                        highscore_tab = labels.index(game.difficulty[0])
-                        state = "highscores"
+                        await save_player_name()
                     elif event.key == pygame.K_ESCAPE:
                         state = "playing"  # skip saving, back to the win banner
                     elif event.key == pygame.K_BACKSPACE:
@@ -747,6 +851,18 @@ async def main():
                     elif (len(player_name) < MAX_NAME_LENGTH
                           and event.unicode.isprintable()):
                         player_name += event.unicode
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for action, rect in name_btns:
+                        if rect.collidepoint(event.pos):
+                            if action == "save":
+                                await save_player_name()
+                            else:
+                                state = "playing"  # skip saving
+                    # No keyboard on touch devices: tapping the input box opens
+                    # the browser prompt, which summons the on-screen keyboard.
+                    if (state == "enter_name" and IS_WEB
+                            and name_box.collidepoint(event.pos)):
+                        player_name = prompt_for_name(player_name)
 
             else:  # highscores
                 if event.type == pygame.KEYDOWN:
@@ -756,6 +872,8 @@ async def main():
                         if event.key == pygame.K_1 + i:
                             highscore_tab = i
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if back_btn.collidepoint(event.pos):
+                        state = "menu"
                     for rect, i in tab_rects:
                         if rect.collidepoint(event.pos):
                             highscore_tab = i
@@ -766,22 +884,24 @@ async def main():
 
         # 3. Draw everything.
         screen.fill(BACKGROUND)
+        mouse_pos = pygame.mouse.get_pos()
         if state == "menu":
-            draw_menu(screen, buttons, hs_button, pygame.mouse.get_pos(),
+            draw_menu(screen, buttons, hs_button, mouse_pos,
                       banner_font, small_font, hud_font)
         elif state == "highscores":
-            draw_highscores(screen, scores, highscore_tab, tab_rects,
-                            banner_font, hud_font, small_font)
+            draw_highscores(screen, scores, highscore_tab, tab_rects, back_btn,
+                            banner_font, hud_font, small_font, button_font, mouse_pos)
         else:  # playing or enter_name
             now = pygame.time.get_ticks()
             for card in game.cards:
                 draw_card(screen, card, number_font, back_font, now)
-            draw_hud(screen, game, hud_font, small_font)
+            draw_hud(screen, game, hud_btns, hud_font, button_font, mouse_pos)
             if state == "enter_name":
-                draw_name_entry(screen, game, player_name, now,
-                                banner_font, hud_font, small_font)
+                draw_name_entry(screen, game, player_name, now, name_box, name_btns,
+                                banner_font, hud_font, small_font, button_font, mouse_pos)
             elif game.won:
-                draw_win_banner(screen, game, banner_font, hud_font, small_font)
+                draw_win_banner(screen, game, win_btns,
+                                banner_font, hud_font, button_font, mouse_pos)
         pygame.display.flip()
 
         clock.tick(FPS)
