@@ -9,7 +9,7 @@ players via the server instead.
 
 Controls: everything works by mouse click or touch tap (pick a
 difficulty, flip cards, use the on-screen Menu / Restart / Save
-buttons). A physical keyboard works too: keys 1-3 pick a difficulty,
+buttons). A physical keyboard works too: keys 1-4 pick a difficulty,
 H opens the high score board, R restarts, Esc for menu / quit.
 """
 
@@ -50,6 +50,7 @@ DIFFICULTIES = [
     ("Easy", 4, 4),      # 16 cards, 8 pairs
     ("Medium", 6, 4),    # 24 cards, 12 pairs
     ("Hard", 6, 6),      # 36 cards, 18 pairs
+    ("Expert", 10, 10),  # 100 cards, 50 pairs
 ]
 
 # Colors (R, G, B)
@@ -63,7 +64,8 @@ TEXT_LIGHT = (245, 245, 245)
 TEXT_DARK = (30, 30, 30)
 BANNER_BG = (0, 0, 0, 170)  # semi-transparent overlay
 
-# Each pair gets a number and one of these colors (enough for the hardest grid).
+# Each pair gets a number and one of these colors. With more pairs than
+# colors the colors repeat - the number is what identifies a pair.
 PAIR_COLORS = [
     (239, 83, 80),    # red
     (255, 167, 38),   # orange
@@ -153,7 +155,7 @@ def build_deck(cols, rows):
         x = offset_x + col * (card_size + GAP)
         y = offset_y + row * (card_size + GAP)
         rect = pygame.Rect(x, y, card_size, card_size)
-        cards.append(Card(pair_id + 1, PAIR_COLORS[pair_id], rect))
+        cards.append(Card(pair_id + 1, PAIR_COLORS[pair_id % len(PAIR_COLORS)], rect))
     return cards
 
 
@@ -517,9 +519,9 @@ def draw_win_banner(screen, game, buttons, banner_font, hud_font, button_font, m
 
 def menu_buttons():
     """One centered button per difficulty; returns [(rect, difficulty_index)]."""
-    button_w, button_h = 320, 70
-    gap_y = 24
-    start_y = 300
+    button_w, button_h = 320, 64
+    gap_y = 16
+    start_y = 270
     buttons = []
     for i in range(len(DIFFICULTIES)):
         x = (WINDOW_WIDTH - button_w) // 2
@@ -637,7 +639,7 @@ def draw_name_entry(screen, game, name, now, box, buttons,
 
 def highscore_tab_rects():
     """One small tab button per difficulty on the high score screen."""
-    tab_w, tab_h, gap = 150, 46, 16
+    tab_w, tab_h, gap = 130, 46, 14
     total = len(DIFFICULTIES) * tab_w + (len(DIFFICULTIES) - 1) * gap
     x = (WINDOW_WIDTH - total) // 2
     return [(pygame.Rect(x + i * (tab_w + gap), 150, tab_w, tab_h), i)
@@ -682,7 +684,7 @@ def draw_highscores(screen, scores, tab, tab_rects, back_button,
             time_text = hud_font.render(format_time(entry["time_ms"]), True, TEXT_LIGHT)
             screen.blit(time_text, time_text.get_rect(topright=(WINDOW_WIDTH - 90, y)))
 
-    hint = small_font.render("1-3 or tap to switch difficulty",
+    hint = small_font.render("1-4 or tap to switch difficulty",
                              True, CARD_BACK_BORDER)
     screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 700)))
 
