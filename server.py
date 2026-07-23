@@ -24,7 +24,9 @@ mirror instead, so the game works on any host. If you ever ran
 service worker for localhost:8000 - the default port 8080 avoids it.
 
 Static game files are served from build/web. High scores are stored in
-leaderboard.json next to this script and shared by every connected player.
+leaderboard.json inside a data directory and shared by every connected
+player. The data directory is /data (the mounted volume) when running on
+Railway, and ../data next to this project folder when running locally.
 
 API (used by the game itself, same origin, so no CORS issues):
     GET /api/scores                                          -> the whole board
@@ -35,6 +37,7 @@ Only the Python standard library is needed.
 
 import json
 import mimetypes
+import os
 import re
 import sys
 import threading
@@ -45,7 +48,12 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "build" / "web"
-LEADERBOARD_PATH = BASE_DIR / "leaderboard.json"
+
+# Railway always sets RAILWAY_ENVIRONMENT; there we use the mounted /data
+# volume so scores survive redeploys. Locally we use ../data next to the
+# project folder.
+DATA_DIR = Path("/data") if os.environ.get("RAILWAY_ENVIRONMENT") else BASE_DIR.parent / "data"
+LEADERBOARD_PATH = DATA_DIR / "leaderboard.json"
 
 RUNTIME_CDN = "https://pygame-web.github.io/cdn/"
 
@@ -310,6 +318,7 @@ def main():
     if not WEB_DIR.is_dir():
         raise SystemExit(f"error: {WEB_DIR} not found - build the game first with:\n"
                          "    py -m pygbag --build .")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     ensure_runtime()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Serving Memory Match on http://localhost:{port} (Ctrl+C to stop)")
