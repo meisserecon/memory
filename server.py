@@ -159,8 +159,23 @@ def patched_index():
     still keep audio muted until the first tap; SDL resumes the audio
     context automatically on that first interaction, and the game is
     fully tap-driven anyway.
+
+    The game archive URL gets a ?v=<mtime> query (cache busting): after a
+    rebuild the URL changes, so even a browser holding a stale cached copy
+    of the old archive fetches the new one on the next load. index.html
+    itself is always served fresh (see Handler.end_headers), so the new
+    URL reaches every client right away.
     """
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    m = re.search(r'archive\s*:\s*"([^"]+)"', html)
+    if m:
+        name = m.group(1)
+        for ext in (".apk", ".tar.gz"):
+            try:
+                version = int((WEB_DIR / (name + ext)).stat().st_mtime)
+            except OSError:
+                continue  # archive variant not present - leave the URL alone
+            html = html.replace(f'"{name}{ext}"', f'"{name}{ext}?v={version}"')
     html = html.replace(RUNTIME_CDN, "/cdn/")
     html = html.replace(
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
@@ -299,11 +314,19 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
+    def end_headers(self):
+        # Force every browser (including embedded webviews) to revalidate
+        # each file with the server before using a cached copy, so a normal
+        # reload never shows a stale build. Unchanged files still answer
+        # 304 via Last-Modified, so the big pygbag runtime is not
+        # re-downloaded on every visit.
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def _send_bytes(self, body, content_type, status=200):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         # Allow the API to be used even when the game is hosted elsewhere.
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
