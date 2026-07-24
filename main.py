@@ -9,7 +9,7 @@ players via the server instead.
 
 Controls: everything works by mouse click or touch tap (pick a
 difficulty, flip cards, use the on-screen Menu / Restart / Save
-buttons). A physical keyboard works too: keys 1-4 pick a difficulty,
+buttons). A physical keyboard works too: keys 1-5 pick a difficulty,
 H opens the high score board, R restarts, Esc for menu / quit.
 """
 
@@ -47,10 +47,11 @@ LOCALSTORAGE_KEY = "memory_match_highscores"  # per-browser fallback board
 
 # (menu label, grid columns, grid rows) - number of cards must be even
 DIFFICULTIES = [
-    ("Easy", 4, 4),      # 16 cards, 8 pairs
-    ("Medium", 6, 4),    # 24 cards, 12 pairs
-    ("Hard", 6, 6),      # 36 cards, 18 pairs
-    ("Expert", 10, 10),  # 100 cards, 50 pairs
+    ("Easy", 4, 4),        # 16 cards, 8 pairs
+    ("Medium", 6, 4),      # 24 cards, 12 pairs
+    ("Hard", 6, 6),        # 36 cards, 18 pairs
+    ("Expert", 10, 10),    # 100 cards, 50 pairs
+    ("Soulless", 10, 14),  # 140 cards, 70 pairs
 ]
 
 # Colors (R, G, B)
@@ -60,6 +61,8 @@ CARD_BACK_BORDER = (120, 124, 150)
 CARD_MATCHED_BORDER = (255, 255, 255)
 BUTTON = (70, 73, 96)
 BUTTON_HOVER = (95, 99, 128)
+BUTTON_RED = (160, 30, 40)         # Soulless difficulty button
+BUTTON_RED_HOVER = (200, 45, 58)
 TEXT_LIGHT = (245, 245, 245)
 TEXT_DARK = (30, 30, 30)
 BANNER_BG = (0, 0, 0, 170)  # semi-transparent overlay
@@ -521,7 +524,7 @@ def menu_buttons():
     """One centered button per difficulty; returns [(rect, difficulty_index)]."""
     button_w, button_h = 320, 64
     gap_y = 16
-    start_y = 270
+    start_y = 250
     buttons = []
     for i in range(len(DIFFICULTIES)):
         x = (WINDOW_WIDTH - button_w) // 2
@@ -532,7 +535,7 @@ def menu_buttons():
 
 def highscores_button():
     """The menu button that opens the high score board."""
-    return pygame.Rect((WINDOW_WIDTH - 320) // 2, 582, 320, 56)
+    return pygame.Rect((WINDOW_WIDTH - 320) // 2, 646, 320, 56)
 
 
 def draw_menu(screen, buttons, hs_button, mouse_pos, banner_font, small_font, hud_font):
@@ -543,12 +546,16 @@ def draw_menu(screen, buttons, hs_button, mouse_pos, banner_font, small_font, hu
     screen.blit(subtitle, subtitle.get_rect(center=(WINDOW_WIDTH // 2, 210)))
 
     for rect, i in buttons:
-        # Brighten the button under the mouse.
-        color = BUTTON_HOVER if rect.collidepoint(mouse_pos) else BUTTON
+        label, cols, rows = DIFFICULTIES[i]
+        # Soulless gets a red button; brighten the button under the mouse.
+        if label == "Soulless":
+            base, hover = BUTTON_RED, BUTTON_RED_HOVER
+        else:
+            base, hover = BUTTON, BUTTON_HOVER
+        color = hover if rect.collidepoint(mouse_pos) else base
         pygame.draw.rect(screen, color, rect, border_radius=12)
         pygame.draw.rect(screen, CARD_BACK_BORDER, rect, width=3, border_radius=12)
 
-        label, cols, rows = DIFFICULTIES[i]
         text = hud_font.render(f"{i + 1} - {label} ({cols}x{rows})", True, TEXT_LIGHT)
         screen.blit(text, text.get_rect(center=rect.center))
 
@@ -560,7 +567,7 @@ def draw_menu(screen, buttons, hs_button, mouse_pos, banner_font, small_font, hu
 
     hint = small_font.render("Tap or click a button to start - H for high scores",
                              True, CARD_BACK_BORDER)
-    screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 680)))
+    screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 725)))
 
 
 # ---------------------------------------------------------------------------
@@ -639,7 +646,7 @@ def draw_name_entry(screen, game, name, now, box, buttons,
 
 def highscore_tab_rects():
     """One small tab button per difficulty on the high score screen."""
-    tab_w, tab_h, gap = 130, 46, 14
+    tab_w, tab_h, gap = 112, 46, 8
     total = len(DIFFICULTIES) * tab_w + (len(DIFFICULTIES) - 1) * gap
     x = (WINDOW_WIDTH - total) // 2
     return [(pygame.Rect(x + i * (tab_w + gap), 150, tab_w, tab_h), i)
@@ -684,7 +691,7 @@ def draw_highscores(screen, scores, tab, tab_rects, back_button,
             time_text = hud_font.render(format_time(entry["time_ms"]), True, TEXT_LIGHT)
             screen.blit(time_text, time_text.get_rect(topright=(WINDOW_WIDTH - 90, y)))
 
-    hint = small_font.render("1-4 or tap to switch difficulty",
+    hint = small_font.render("1-5 or tap to switch difficulty",
                              True, CARD_BACK_BORDER)
     screen.blit(hint, hint.get_rect(center=(WINDOW_WIDTH // 2, 700)))
 

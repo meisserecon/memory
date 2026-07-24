@@ -216,7 +216,7 @@ def patched_cpythonrc():
 # Shared leaderboard
 # ---------------------------------------------------------------------------
 
-DIFFICULTIES = ("Easy", "Medium", "Hard", "Expert")
+DIFFICULTIES = ("Easy", "Medium", "Hard", "Expert", "Soulless")
 MAX_HIGHSCORES = 10
 MAX_NAME_LENGTH = 12
 MAX_MOVES = 100_000        # sanity limits against junk submissions
