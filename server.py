@@ -23,10 +23,15 @@ mirror instead, so the game works on any host. If you ever ran
 "py -m pygbag ." (its test server), your browser may also hold a stale
 service worker for localhost:8000 - the default port 8080 avoids it.
 
-Static game files are served from build/web. High scores are stored in
-leaderboard.json inside a data directory and shared by every connected
-player. The data directory is /data (the mounted volume) when running on
-Railway, and ../data next to this project folder when running locally.
+Static game files are served from build/web over HTTP/1.1 keep-alive;
+big runtime files are precompressed (.gz siblings, created once) and
+served gzipped when the browser accepts it. Version-pinned runtime
+files are served with an immutable cache header, everything else with
+no-cache so a normal reload never shows a stale build. High scores are
+stored in leaderboard.json inside a data directory and shared by every
+connected player. The data directory is /data (the mounted volume) when
+running on Railway, and ../data next to this project folder when running
+locally.
 
 API (used by the game itself, same origin, so no CORS issues):
     GET /api/scores                                          -> the whole board
@@ -35,10 +40,12 @@ API (used by the game itself, same origin, so no CORS issues):
 Only the Python standard library is needed.
 """
 
+import gzip
 import json
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import threading
 import urllib.request
@@ -142,6 +149,29 @@ def ensure_runtime():
                 dest.write_bytes(b"")
             else:
                 raise SystemExit(f"error: could not download {url}: {exc}")
+
+
+# Big static files get a precompressed .gz sibling so they can be served
+# with Content-Encoding: gzip (main.wasm alone shrinks from 13 MB to ~4 MB).
+MIN_COMPRESS_SIZE = 64 * 1024
+COMPRESSIBLE_SUFFIXES = (".wasm", ".data", ".js", ".whl", ".json", ".css")
+
+
+def ensure_compressed():
+    """Create .gz siblings for big static files (one-time, cached on disk)."""
+    for path in WEB_DIR.rglob("*"):
+        if not path.is_file() or not path.name.endswith(COMPRESSIBLE_SUFFIXES):
+            continue
+        try:
+            if path.stat().st_size < MIN_COMPRESS_SIZE:
+                continue
+        except OSError:
+            continue
+        gz = path.with_name(path.name + ".gz")
+        if gz.exists() and gz.stat().st_mtime >= path.stat().st_mtime:
+            continue  # already compressed and up to date
+        print(f"compressing {path.relative_to(WEB_DIR)}")
+        gz.write_bytes(gzip.compress(path.read_bytes(), compresslevel=6))
 
 
 def patched_index():
@@ -311,16 +341,27 @@ def parse_submission(query):
 class Handler(SimpleHTTPRequestHandler):
     """Static files from build/web plus the /api/scores endpoints."""
 
+    # HTTP/1.1 keep-alive: all runtime files load over one connection
+    # instead of a new TCP connection per file.
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
     def end_headers(self):
-        # Force every browser (including embedded webviews) to revalidate
-        # each file with the server before using a cached copy, so a normal
-        # reload never shows a stale build. Unchanged files still answer
-        # 304 via Last-Modified, so the big pygbag runtime is not
-        # re-downloaded on every visit.
-        self.send_header("Cache-Control", "no-cache")
+        # Version-pinned runtime files (the path embeds the pygbag /
+        # cpython / pygame versions) never change for a given URL, so the
+        # browser may keep them forever without even revalidating. The two
+        # files patched per request and the unversioned vt/* files must
+        # still revalidate, like everything else: a normal reload must
+        # never show a stale build. Revalidation is cheap - unchanged
+        # files answer 304 via Last-Modified.
+        if (self.path.startswith("/cdn/")
+                and not self.path.startswith(("/cdn/vt/", "/cdn/vtx.js"))
+                and not self.path.endswith(("pythons.js", "cpythonrc.py"))):
+            self.send_header("Cache-Control", "max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def _send_bytes(self, body, content_type, status=200):
@@ -364,6 +405,21 @@ class Handler(SimpleHTTPRequestHandler):
             except OSError:
                 self.send_error(404)
         else:
+            # Static game/runtime file: serve the precompressed copy when
+            # the browser accepts gzip and one exists on disk.
+            if "gzip" in self.headers.get("Accept-Encoding", ""):
+                local = Path(self.translate_path(self.path))
+                gz = local.with_name(local.name + ".gz")
+                if gz.is_file():
+                    self.send_response(200)
+                    self.send_header("Content-Type", self.guess_type(str(local)))
+                    self.send_header("Content-Encoding", "gzip")
+                    self.send_header("Content-Length", str(gz.stat().st_size))
+                    self.send_header("Vary", "Accept-Encoding")
+                    self.end_headers()
+                    with gz.open("rb") as f:
+                        shutil.copyfileobj(f, self.wfile)
+                    return
             super().do_GET()  # static game/runtime file
 
 
@@ -374,6 +430,7 @@ def main():
                          "    py -m pygbag --build .")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ensure_runtime()
+    ensure_compressed()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Serving Memory Match on http://localhost:{port} (Ctrl+C to stop)")
     try:

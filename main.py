@@ -18,6 +18,7 @@ import json
 import math
 import random
 import sys
+import time
 from array import array
 from pathlib import Path
 
@@ -141,6 +142,25 @@ def board_layout(cols, rows):
     offset_x = (WINDOW_WIDTH - board_w) // 2
     offset_y = HUD_HEIGHT + MARGIN + (avail_h - board_h) // 2
     return card_size, offset_x, offset_y
+
+
+def reseed_random():
+    """Give the deck shuffle a different starting point on every page load.
+
+    The wasm build running in the browser gets a deterministic default
+    seed, so without this every reload would deal the exact same board.
+    The seed comes from the browser's own Math.random().
+    """
+    if IS_WEB:
+        import platform
+        try:
+            random.seed(f"{platform.window.Math.random()}:{time.time_ns()}")
+            return
+        except Exception:
+            pass
+        random.seed(time.time_ns())  # fallback: the wall clock still varies
+    else:
+        random.seed()
 
 
 def build_deck(cols, rows):
@@ -748,6 +768,7 @@ def load_sounds():
 async def main():
     pygame.mixer.pre_init(SAMPLE_RATE, -16, 2, 512)  # 16-bit stereo, small buffer
     pygame.init()
+    reseed_random()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Memory Match")
     clock = pygame.time.Clock()
